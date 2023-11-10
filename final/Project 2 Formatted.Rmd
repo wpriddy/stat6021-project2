@@ -1,0 +1,6 @@
+---
+title: "STAT 6021: Project 2"
+author: "Ade Faparusi, Connor Glowacki, Zahin Howlader, Wyatt Priddy"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
