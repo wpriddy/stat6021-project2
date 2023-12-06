@@ -1,0 +1,125 @@
+---
+title: "Multiple Linear Regression Stat Project 2"
+output: html_document
+date: "2023-12-06"
+---
+# TODO WYATT NOTES:
+
+#1. Check for outliers and high impact variables (one house has 33 bedrooms)
+#2. CHECK FOR MULTICOLLINEARITY
+
+```{r}
+library(tidyverse)
+
+setwd('C:/Users/wyatt/OneDrive/Documents/repos/stat6021-project2')
+
+# Read in Data
+data <- read.csv('kc_house_data.csv')
+
+# View headers
+head(data, 3)
+```
+
+```{r}
+colnames(data)
+```
+# Data Definitions
+<!-- id - Unique ID for each home sold --> DON'T WANT FOR ANALYSIS
+
+<!-- date - Date of the home sale --> Only have 2 years - should not have a big impact on price of houses within the market with this small of a time frame
+```{r}
+years_sold <- data$date %>%
+  substr(1, 4)
+
+table(years_sold)
+```
+
+<!-- price - Price of each home sold -->
+# RESPONSE VARIABLE ^ NEED :)
+# Potentiall take price in '000s
+```{r}
+summary(data$price/1000)
+```
+<!-- bedrooms - Number of bedrooms -->
+# KEEP IN REGRESSION
+```{r}
+table(data$bedrooms)
+```
+<!-- bathrooms - Number of bathrooms, where .5 accounts for a room with a toilet but no shower -->
+# KEEP IN REGRESSION
+```{r}
+summary(data$bathrooms)
+```
+<!-- sqft_living - Square footage of the apartments interior living space -->
+# POTENTIALLY KEEP IN REGRESSION
+```{r}
+summary(data$sqft_living)
+```
+<!-- sqft_lot  - Square footage of the land space -->
+# POTENTIALLY KEEP IN REGRESSION
+```{r}
+summary(data$sqft_lot)
+```
+<!-- sqft_above - The square footage of the interior housing space that is above ground level -->
+```{r}
+summary(data$sqft_above)
+```
+<!-- sqft_basement - The square footage of the interior housing space that is below ground level -->
+```{r}
+summary(data$sqft_basement)
+```
+
+<!-- floors - Number of floors -->
+#Potentially keep in regression - probably not though
+```{r}
+table(data$floors)
+```
+<!-- waterfront - A dummy variable for whether the apartment was overlooking the waterfront or not -->
+# proabbly drop,not big sample size difference - just keep view
+```{r}
+table(data$waterfront)
+```
+<!-- view - An index from 0 to 4 of how good the view of the property was -->
+# Maybe just keep view though
+```{r}
+table(data$view)
+```
+<!-- condition - An index from 1 to 5 on the condition of the apartment, -->
+# definately keep condition
+```{r}
+table(data$condition)
+```
+<!-- grade - An index from 1 to 13, where 1-3 falls short of building construction and design, 7 has an average level of construction and design, and 11-13 have a high quality level of construction and design. -->
+# potentially keep grade
+```{r}
+table(data$grade)
+```
+<!-- yr_built - The year the house was initially built -->
+# Potentially Keep
+```{r}
+table(data$yr_built)
+```
+<!-- yr_renovated - The year of the house’s last renovation -->
+# Probably don't keep year renovated OR convert to dummy variable for Renovated or Not
+```{r}
+table(data$yr_renovated)
+```
+# NEIGHBORHOOD VARIABLES
+<!-- zipcode - What zipcode area the house is in -->
+```{r}
+table(data$zipcode)
+```
+<!-- lat - Latitude -->
+# DONT NEED LAT OR LONG
+<!-- long - Longitude -->
+# DONT NEED LAT OR LONG
+
+<!-- sqft_living15 - The square footage of interior housing living space for the nearest 15 neighbors -->
+```{r}
+summary(data$sqft_living15)
+```
+<!-- sqft_lot15 - The square footage of the land lots of the nearest 15 neighbors -->
+
+```{r}
+summary(data$sqft_lot15)
+```
