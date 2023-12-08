@@ -1,0 +1,290 @@
+---
+title: "STAT6021_Project_2_Ade_Faparusi"
+author: "Ade Faparusi"
+date: "2023-11-06"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(GGally)
+library(dplyr)
+library(tidyverse)
+library(gapminder)
+library(MASS)
+library(datasets)
+library(leaps)
+library(gridExtra)
+library(ggplot2)
+library("scales") 
+```
+**Read in data **
+
+```{r}
+#Read in data and split into train vs test data
+Data<-read.csv("kc_house_data.csv", sep=",", header=TRUE)
+
+Data$price_flag <- factor(ifelse(Data$price>700000,1,0) ) #flag for price > $700K
+
+Data$basement_flag <- factor(ifelse(Data$sqft_basement>0,1,0) ) #flag for if there is a basement
+
+#Extract year and month from date 
+Data$year <- substr(Data$date,1,4)
+Data$month <- substr(Data$date,5,6)
+
+#change data type of categorical variables 
+Data$waterfront <-factor(Data$waterfront)
+Data$condition <-factor(Data$condition)
+#Data$grade <-factor(Data$grade) #???
+Data$view <-factor(Data$view)
+#Data$zipcode <-factor(Data$zipcode)
+
+#create log of price variable
+Data$logprice <-log(Data$price)
+
+#Subset into test and train
+set.seed(6021)
+sample.data<-sample.int(nrow(Data), floor(.50*nrow(Data)), replace = F)
+
+train<-Data[sample.data, ]
+test<-Data[-sample.data, ]
+
+head(train)
+```
+
+
+```{r}
+#The boxplots of the quantitative variables across price flag:
+
+bp1<-ggplot(train, aes(x=price_flag, y=bedrooms))+
+geom_boxplot()+
+labs(x="price_flag", y="bedrooms", title="bedrooms by price_flag")
+
+bp2<-ggplot(train, aes(x=price_flag, y=bathrooms))+
+geom_boxplot()+
+labs(x="price_flag", y="bathrooms", title="bathrooms by price_flag")
+
+bp3<-ggplot(train, aes(x=price_flag, y=sqft_living))+
+geom_boxplot()+
+labs(x="price_flag", y="sqft_living", title="sqft_living by price_flag")
+
+bp4<-ggplot(train, aes(x=price_flag, y=sqft_lot))+
+geom_boxplot()+
+labs(x="price_flag", y="sqft_lot", title="sqft_lot by price_flag")
+
+bp5<-ggplot(train, aes(x=price_flag, y=floors))+
+geom_boxplot()+
+labs(x="price_flag", y="floors", title="floors by price_flag")
+
+bp6<-ggplot(train, aes(x=price_flag, y=grade))+
+geom_boxplot()+
+labs(x="price_flag", y="grade", title="grade by price_flag")
+
+bp7<-ggplot(train, aes(x=price_flag, y=sqft_above))+
+geom_boxplot()+
+labs(x="price_flag", y="sqft_above", title="sqft_above by price_flag")
+
+bp8<-ggplot(train, aes(x=price_flag, y=sqft_basement))+
+geom_boxplot()+
+labs(x="price_flag", y="sqft_basement", title="sqft_basement by price_flag")
+
+bp9<-ggplot(train, aes(x=price_flag, y=yr_built))+
+geom_boxplot()+
+labs(x="price_flag", y="yr_built", title="yr_built by price_flag")
+
+bp10<-ggplot(train, aes(x=price_flag, y=sqft_living15))+
+geom_boxplot()+
+labs(x="price_flag", y="sqft_living15", title="sqft_living15 by price_flag")
+
+bp11<-ggplot(train, aes(x=price_flag, y=sqft_lot15))+
+geom_boxplot()+
+labs(x="price_flag", y="sqft_lot15", title="sqft_lot15 by price_flag")
+
+bp12<-ggplot(train, aes(x=price_flag, y=yr_renovated))+
+geom_boxplot()+
+labs(x="price_flag", y="yr_renovated", title="yr_renovated by price_flag")
+
+
+##produce the boxplots in a 2 by 2 matrix
+grid.arrange(bp1, bp2, bp3, bp4, ncol = 2, nrow = 2)
+grid.arrange(bp5, bp6, bp7, bp8, ncol = 2, nrow = 2)
+grid.arrange(bp9, bp10, bp11, bp12, ncol = 2, nrow = 2)
+```
+
+
+
+```{r}
+#Density plots of quantitative variables
+dp1<-ggplot(train,aes(x=bedrooms, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of bedrooms by price_flag")
+
+dp2<-ggplot(train,aes(x=bathrooms, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of bathrooms by price_flag")
+
+dp3<-ggplot(train,aes(x=sqft_living, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of sqft_living by price_flag")
+
+dp4<-ggplot(train,aes(x=sqft_lot, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of sqft_lot by price_flag")
+
+dp5<-ggplot(train,aes(x=floors, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of floors by price_flag")
+
+dp6<-ggplot(train,aes(x=grade, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of grade by price_flag")
+
+dp7<-ggplot(train,aes(x=sqft_above, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of sqft_above by price_flag")
+
+dp8<-ggplot(train,aes(x=sqft_basement, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of sqft_basement by price_flag")
+
+dp9<-ggplot(train,aes(x=yr_built, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of yr_built by price_flag")
+
+dp10<-ggplot(train,aes(x=sqft_living15, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of sqft_living15 by price_flag")
+
+dp11<-ggplot(train,aes(x=sqft_lot15, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of sqft_lot15 by price_flag")
+
+dp12<-ggplot(train,aes(x=yr_renovated, color=price_flag))+
+geom_density()+
+labs(title="Density Plot of yr_renovated by price_flag")
+
+##produce the density plots in a 2 by 2 matrix
+grid.arrange(dp1, dp2, dp3, dp4, ncol = 2, nrow = 2)
+grid.arrange(dp5, dp6, dp7, dp8, ncol = 2, nrow = 2)
+grid.arrange(dp9, dp10, dp11, dp12, ncol = 2, nrow = 2)
+```
+
+
+```{r}
+#Bar charts of categorical variables
+
+dp13<- ggplot(train, aes(x=waterfront, fill=price_flag))+
+geom_bar(position = "fill")+
+labs(x="waterfront", y="Proportion",
+title="Proportion of Price Flag by waterfront")
+
+dp14<- ggplot(train, aes(x=condition, fill=price_flag))+
+geom_bar(position = "fill")+
+labs(x="condition", y="Proportion",
+title="Proportion of Price Flag by Condition")
+
+dp15<- ggplot(train, aes(x=view, fill=price_flag))+
+geom_bar(position = "fill")+
+labs(x="view", y="Proportion",
+title="Proportion of Price Flag by View")
+
+dp16<- ggplot(train, aes(x=basement_flag, fill=price_flag))+
+geom_bar(position = "fill")+
+labs(x="basement_flag", y="Proportion",
+title="Proportion of Price Flag by basement_flag")
+
+grid.arrange(dp13, dp14, dp15,dp16, ncol = 2, nrow = 2)
+
+
+```
+
+```{r}
+#ggpairs plot of numerical variables
+my_Data_numer <- train[,c("bedrooms", "bathrooms","sqft_living", "sqft_lot", "sqft_living15", "sqft_lot15","floors","grade","sqft_above","sqft_basement")]
+
+
+GGally::ggpairs(my_Data_numer, progress = FALSE,upper=list(continuous = wrap("cor", size=2))) +
+  theme(axis.text = element_text(size = 5),
+        strip.text.y = element_text(size = 8,angle = 0),
+        strip.text.x = element_text(size = 8,angle = 90),
+        legend.position = "none",
+        panel.grid.major = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.y = element_text(angle = 90, vjust = 1, color = "black"),
+        panel.border = element_rect(fill = NA))
+```
+
+```{r}
+# Create model
+train_sub <- subset(train, select = -c(date, price,id,logprice, sqft_basement))
+result<-glm(price_flag ~ ., family="binomial", data=train_sub)
+result
+```
+
+
+```{r}
+#Wald test
+summary(result)
+```   
+
+
+```{r}
+##predicted class for test data based on training data
+test_sub <- subset(test, select = -c(date, price,id,logprice, sqft_basement))
+
+preds<-predict(result,newdata=test_sub, type="response")
+##add predicted probabilities and classification based on threshold
+test.new<-data.frame(test_sub,preds,preds>0.5)
+```
+
+```{r}
+##confusion matrix with 0.5 threshold
+table(test_sub$price_flag, preds>0.5)
+```
+```{r}
+library(ROCR)
+##produce the numbers associated with classification table
+rates<-ROCR::prediction(preds, test_sub$price_flag)
+
+##store the true positive and false positive rates
+roc_result<-ROCR::performance(rates,measure="tpr", x.measure="fpr")
+##plot ROC curve and overlay the diagonal line for random guessing
+plot(roc_result, main="ROC Curve for Full Model")
+lines(x = c(0,1), y = c(0,1), col="red")
+
+```
+
+```{r}
+##compute the AUC
+auc<-performance(rates, measure = "auc")
+auc@y.values
+```
+
+```{r}
+#Likelihood ratio tests
+
+deltaG2<-result$null.deviance-result$deviance
+deltaG2
+```
+```{r}
+#1-pchisq(deltaG2,x)  ????
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
