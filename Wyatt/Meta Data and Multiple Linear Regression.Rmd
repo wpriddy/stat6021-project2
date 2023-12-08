@@ -6,15 +6,27 @@ date: "2023-12-06"
 # TODO WYATT NOTES:
 
 #1. Check for outliers and high impact variables (one house has 33 bedrooms)
-#2. CHECK FOR MULTICOLLINEARITY
+#2. Review why logging variables
+#3. use automated search procedures for model from existing vars
 
 ```{r}
 library(tidyverse)
+library(MASS)
+library(leaps)
+library(faraway)
+
+#Disable scientific notation
+options(scipen = 100)
+
 
 setwd('C:/Users/wyatt/OneDrive/Documents/repos/stat6021-project2')
 
 # Read in Data
 data <- read.csv('kc_house_data.csv')
+
+
+# Remove Data with no bedrooms or bathrooms
+data <- subset(data, data$bathroom != 0 | data$bedrooms != 0)
 
 # View headers
 head(data, 3)
@@ -23,7 +35,8 @@ head(data, 3)
 ```{r}
 colnames(data)
 ```
-# Data Definitions
+
+# Data Definitions AND Summary Stats
 <!-- id - Unique ID for each home sold --> DON'T WANT FOR ANALYSIS
 
 <!-- date - Date of the home sale --> Only have 2 years - should not have a big impact on price of houses within the market with this small of a time frame
@@ -48,7 +61,7 @@ table(data$bedrooms)
 <!-- bathrooms - Number of bathrooms, where .5 accounts for a room with a toilet but no shower -->
 # KEEP IN REGRESSION
 ```{r}
-summary(data$bathrooms)
+table(data$bathrooms)
 ```
 <!-- sqft_living - Square footage of the apartments interior living space -->
 # POTENTIALLY KEEP IN REGRESSION
@@ -91,6 +104,7 @@ table(data$condition)
 ```
 <!-- grade - An index from 1 to 13, where 1-3 falls short of building construction and design, 7 has an average level of construction and design, and 11-13 have a high quality level of construction and design. -->
 # potentially keep grade
+## CREATEINTO BUCKETS
 ```{r}
 table(data$grade)
 ```
@@ -106,6 +120,7 @@ table(data$yr_renovated)
 ```
 # NEIGHBORHOOD VARIABLES
 <!-- zipcode - What zipcode area the house is in -->
+# Geo spatial regression too complicated for this analysis
 ```{r}
 table(data$zipcode)
 ```
@@ -123,3 +138,172 @@ summary(data$sqft_living15)
 ```{r}
 summary(data$sqft_lot15)
 ```
+## SUBSECT INITIAL DATA REVIEW
+
+# Create new column for renovated boolean and grade category
+```{r}
+# Add renovated boolean
+data$renovated <- as.factor(ifelse(data$yr_renovated == 0, 0,1))
+
+# Create Quality buckets FROM GRADE ##NEW VARIABLE
+data$grade <- cut(as.numeric(data$grade), breaks = c(0, 3, 10, 14), right=FALSE, labels = c('subpar', 'average', 'high quality'))
+data$grade <- relevel(data$grade, "average")
+
+
+#Drop ID - ID only differentiates rows so not needed
+# Date - there are only two years of data here so not much variation for time series
+# Zipcode - omit regional data to simplify regression
+# lat, long -omit specific location to simplify regression
+# sqft_basement - omit since NA - linearly related to other variables
+#TRANSFORM GRADE, yr_built, #TRANSFORM yr Renovated, 
+data <- data %>%
+             dplyr::select(price, 
+                           bedrooms, 
+                           bathrooms, 
+                           sqft_living,
+                           sqft_lot,
+                           floors,
+                           waterfront,
+                           view, 
+                           condition,
+                           grade, 
+                           yr_built,
+                           sqft_above,
+                           renovated,
+                           sqft_living15,
+                           sqft_lot15
+                           )
+
+# Create TEST/TRAIN Split
+set.seed(6021)
+sample.data<-sample.int(nrow(data), floor(.50*nrow(data)), replace = F)
+
+
+train<-data[sample.data, ]
+rownames(train) <- NULL
+test<-data[-sample.data, ]
+rownames(test) <- NULL
+
+# Get correlation coefficients
+round(cor(train[,unlist(lapply(train, is.numeric), use.names = FALSE)]), 3)
+
+
+# start visualization 
+pairs(train[,unlist(lapply(train, is.numeric), use.names = FALSE)])
+# Floors, waterfront, views, and conditions are categorical variables
+```
+
+
+# Convert Categorical Variables to factors
+```{r}
+train$floors <- as.factor(train$floors)
+train$view <- as.factor(train$view)
+train$condition <- as.factor(train$condition)
+train$waterfront <- as.factor(train$waterfront)
+```
+
+
+```{r}
+# Run initial regression
+# Looking at price in '000s
+results <- lm(price/1000~., data=train)
+summary(results)
+```
+
+# MULTICOLLinearity
+# sqft living and sqft above both indicate multicollinearity. drop sqft_above as sqft_living is more relevant to home price. condition has high multi-collinearity, drop from model
+```{r}
+faraway::vif(results)
+```
+# Re-run regression w/o sqft_above and condition
+```{r}
+train <- train %>%
+                     dplyr::select(price, 
+                                   bedrooms, 
+                                   bathrooms, 
+                                   sqft_living,
+                                   sqft_lot,
+                                   floors,
+                                   waterfront,
+                                   view, 
+                                   grade, 
+                                   yr_built,
+                                   renovated,
+                                   sqft_living15,
+                                   sqft_lot15
+                                   )
+
+# Run initial regression
+results <- lm(price/1000~., data=train)
+summary(results)
+```
+#no longer evidence of multicollinearity
+
+```{r}
+faraway::vif(results)
+```
+
+# Automated search procedures
+
+# utilizing stepwise prediction 
+```{r}
+
+reg_null <- lm(price/1000~1, data=train)
+
+step(reg_null, scope=list(lower=reg_null, upper=results), direction='both')
+```
+
+```{r}
+# Build model based on results of step-wise automated search procedures
+automated_results <- lm(formula = price/1000 ~ sqft_living + view + grade + yr_built + 
+    floors + waterfront + sqft_living15 + bathrooms + bedrooms + 
+    sqft_lot15, data = train)
+
+summary(automated_results)
+```
+
+# Assess assumptions
+
+```{r}
+#assess regression assumptions
+par(mfrow=c(2,2))
+plot(automated_results)
+
+# ASSUMPTION 2 are not met so we need to transform the response variable (price)
+```
+
+
+```{r}
+# 1 does not lie in the CI AND there is increasing variance from left to right therefore a transformation of Y may be needed - we will use log so we can still interpret the estimated coefficients
+boxcox(automated_results)
+```
+
+# Re-run regression with transformed Y
+```{r}
+transformed_results <- lm(formula = log(price) ~ sqft_living + view + grade + yr_built + 
+    floors + waterfront + sqft_living15 + bathrooms + bedrooms + 
+    sqft_lot15, data = train)
+
+
+
+# Example interpretation:
+#1.For a 1 unit increase in sqft living, there is a 0.022% increase in price accounting for all other variables
+#2. For a 1 unit increase in year built, there is a 0.44% decrease in price accounting for all other variables
+summary(transformed_results)
+```
+
+# Assumptions look much better - go with this model
+```{r}
+plot(transformed_results)
+```
+
+
+
+
+```
+```{r}
+#confidence intervals for coefficients
+confint(transformed_results, level=0.95)
+```
+
+
