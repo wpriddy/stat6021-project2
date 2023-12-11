@@ -1,0 +1,182 @@
+---
+title: "PROJ2"
+author: "Connor Glowacki"
+date: "2023-09-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(MASS)
+library(GGally)
+library(leaps)
+library(ggmap)
+library(gridExtra)
+library(ROCR)
+library(leaps)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Data \ Clean
+```{r}
+data <- read.csv("./project2/kc_house_data.csv", header = TRUE)
+
+data$waterfront <- factor(data$waterfront)
+data$view <- factor(data$view)
+data$condition <- factor(data$condition)
+data$grade <- factor(data$grade)
+data$zipcode <- factor(data$zipcode)
+
+extract_year_month <- function(date_string) {
+  date_object <- strptime(date_string, "%Y%m%dT%H%M%S")
+  year <- format(date_object, "%Y")
+  month <- format(date_object, "%m")
+  return(c(year, month))
+}
+data[c("year", "month")] <- t(sapply(data$date, extract_year_month))
+
+data["age_at_sale"] <- as.integer(data$year) - as.integer(data$yr_built)
+
+data["renovated"] <- ifelse(data$yr_renovated == 0, 0, 1)
+
+data["expensive"] <- ifelse(data$price >= 700000, 1, 0)
+data$expensive <- factor(data$expensive)
+
+data["yr_since_renovation"] <- ifelse(
+  data$yr_renovated == 0,
+  data$age_at_sale,
+  as.integer(data$year) - as.integer(data$yr_renovated)
+)
+
+data_more <- data[, c(
+  "waterfront", "view", "yr_built", "renovated", "sqft_living",
+  "floors", "condition", "expensive", "age_at_sale", "sqft_lot", "sqft_basement",
+  "year", "month", "yr_since_renovation"
+)
+]
+data_less <- data[, c(
+  "waterfront", "view", "yr_built", "renovated", "sqft_living",
+  "floors", "condition", "expensive", "age_at_sale"
+)
+]
+
+set.seed(1)
+sample <- sample.int(nrow(data_less), floor(.80 * nrow(data_less)), replace = FALSE)
+train <- data_less[sample, ]
+test <- data_less[-sample, ]
+sample_more <- sample.int(nrow(data_more), floor(.80 * nrow(data_more)), replace = FALSE)
+train_more <- data_more[sample_more, ]
+test_more <- data_more[-sample_more, ]
+# sample <- sample.int(nrow(data), floor(.80 * nrow(data)), replace = FALSE)
+# train <- data[sample, ]
+# test <- data[-sample, ]
+```
+
+## Graphs
+
+```{r}
+# GGally::ggpairs(data_cat_sub, lower = list(discrete=wrap("facethist", binwith=10)))
+# chart1 <- ggplot2::ggplot(train, aes(x = species, fill = expensive)) +
+#   geom_bar(position = "fill") +
+#   labs(x = "Sex", y = "Proportion",
+#        title = "Proportion of species by sex")
+# chart1
+chart2 <- ggplot2::ggplot(data, aes(x = bedrooms, color = expensive)) +
+  geom_density()
+# facet_wrap(train$species)
+
+chart3 <- ggplot2::ggplot(data, aes(x = bathrooms, color = expensive)) +
+  geom_density()
+
+chart4 <- ggplot2::ggplot(train, aes(x = floors, color = expensive)) +
+  geom_density()
+
+chart5 <- ggplot2::ggplot(data, aes(x = grade, color = expensive)) +
+  geom_density()
+
+gridExtra::grid.arrange(chart2, chart3, chart4, chart5, ncol = 2, nrow = 2)
+
+chart6 <- ggplot2::ggplot(train, aes(x = waterfront, color = expensive)) +
+  geom_density()
+# facet_wrap(train$species)
+
+chart7 <- ggplot2::ggplot(train_more, aes(x = view, color = expensive)) +
+  geom_density()
+
+chart8 <- ggplot2::ggplot(train_more, aes(x = sqft_living, color = expensive)) +
+  geom_density()
+
+chart9 <- ggplot2::ggplot(train_more, aes(x = log(sqft_lot), color = expensive)) +
+  geom_density()
+
+gridExtra::grid.arrange(chart6, chart7, chart8, chart9, ncol = 2, nrow = 2)
+
+chart10 <- ggplot2::ggplot(train_more, aes(x = yr_built, color = expensive)) +
+  geom_density()
+# facet_wrap(train$species)
+
+chart11 <- ggplot2::ggplot(data, aes(x = yr_renovated, color = expensive)) +
+  geom_density()
+
+chart12 <- ggplot2::ggplot(train_more, aes(x = renovated, color = expensive)) +
+  geom_density()
+
+chart13 <- ggplot2::ggplot(data, aes(x = zipcode, color = expensive)) +
+  geom_density()
+
+gridExtra::grid.arrange(chart10, chart11, chart12, chart13, ncol = 2, nrow = 2)
+
+chart14 <- ggplot2::ggplot(train_more, aes(x = year, color = expensive)) +
+  geom_density()
+# facet_wrap(train$species)
+
+chart15 <- ggplot2::ggplot(train_more, aes(x = month, color = expensive)) +
+  geom_density()
+
+chart16 <- ggplot2::ggplot(train_more, aes(x = log(sqft_basement), color = expensive)) +
+  geom_density()
+
+chart17 <- ggplot2::ggplot(train_more, aes(x = yr_since_renovation, color = expensive)) +
+  geom_density()
+
+gridExtra::grid.arrange(chart14, chart15, chart16, chart17, ncol = 2, nrow = 2)
+```
+
+1. Displays of `bedrooms`, `bathrooms`, `floors`, `grade`
+  - indicates that all of these may be useful in determining #expensive
+  - HOWEVER, there is high correlation between these predictors
+2. Displays of `waterfront`, `view`, `sqft_living`, `sqft_lot`
+  - ?Seems to indicate that waterfront and view are not as useful
+  - 
+
+
+## Correlations 
+```{r}
+correlations <- round(cor(subset(train, select = -c(grade, expensive))), 3)
+round(cor(data$yr_built, data$yr_renovated, method = c("pearson", "kendall", "spearman")), 3)
+round(cor(data$bedrooms, data$bathrooms, method = c("pearson", "kendall", "spearman")), 3)
+round(cor(as.numeric(data$grade), data$bathrooms, method = c("pearson", "kendall", "spearman")), 3)
+round(cor(as.numeric(data$grade), data$sqft_living, method = c("pearson", "kendall", "spearman")), 3)
+round(cor(data$bedrooms, data$sqft_living, method = c("pearson", "kendall", "spearman")), 3)
+round(cor(data$bathrooms, data$sqft_living, method = c("pearson", "kendall", "spearman")), 3)
+round(cor(data$age_at_sale, as.numeric(data$condition), method = c("pearson", "kendall", "spearman")), 3)
+```
+
+
+## Running Some Models
+
+```{r}
+full <- glm(expensive ~ ., family = binomial, data = train)
+summary(full)
+reduced1 <- glm(expensive ~ . - condition - waterfront, family = binomial, data = train)
+summary(reduced1)
+reduced2 <- glm(expensive ~ . - condition - waterfront - renovated, family = binomial, data = train)
+summary(reduced2)
+```
+
+## RANDOM
+
+```{r}
+typeof(data$date)
+```
