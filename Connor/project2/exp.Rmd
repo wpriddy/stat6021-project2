@@ -14,13 +14,15 @@ library(leaps)
 library(ggmap)
 library(gridExtra)
 library(ROCR)
-library(leaps)
+library(faraway)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Load Data \ Clean
 ```{r}
 data <- read.csv("./project2/kc_house_data.csv", header = TRUE)
+# data <- read.csv("./kc_house_data.csv", header = TRUE)
+
 
 data$waterfront <- factor(data$waterfront)
 data$view <- factor(data$view)
@@ -48,6 +50,8 @@ data["yr_since_renovation"] <- ifelse(
   data$age_at_sale,
   as.integer(data$year) - as.integer(data$yr_renovated)
 )
+
+##  Omitting highly correlated predictors
 
 data_more <- data[, c(
   "waterfront", "view", "yr_built", "renovated", "sqft_living",
@@ -168,15 +172,162 @@ round(cor(data$age_at_sale, as.numeric(data$condition), method = c("pearson", "k
 
 ```{r}
 full <- glm(expensive ~ ., family = binomial, data = train)
+full_more <- glm(expensive ~ ., family = binomial, data = train_more)
+regnull <- glm(expensive ~ 1, family = binomial, data = train)
+regnull_more <- glm(expensive ~ 1, family = binomial, data = train_more)
 summary(full)
 reduced1 <- glm(expensive ~ . - condition - waterfront, family = binomial, data = train)
 summary(reduced1)
 reduced2 <- glm(expensive ~ . - condition - waterfront - renovated, family = binomial, data = train)
 summary(reduced2)
+reduced2_more <- glm(expensive ~ . - condition - waterfront - renovated, family = binomial, data = train_more)
+summary(reduced2)
+
+step(full)
+step(reduced1)
+step(reduced2)
+
+step(reduced2, scope = list(lower = reduced2, upper = full), direction = "forward")
+step(reduced2_more, scope = list(lower = reduced2_more, upper = full_more), direction = "forward")
+
+step(full_more)
 ```
+
+```text
+glm(formula = expensive ~ view + renovated + sqft_living + floors + 
+    condition + age_at_sale + sqft_lot + sqft_basement + month +
+    yr_since_renovation, family = binomial, data = train_more)
+```
+
+has the best AIC for a model selection but needs more analysis because that isn't what I expected. I thought `reduced2` would be best.
+
+
+## Con't w/ Best From AIC Selection
+
+```{r}
+aic_best <- glm(formula = expensive ~ view + renovated + sqft_living + floors +
+    condition + age_at_sale + sqft_lot + sqft_basement + month +
+    yr_since_renovation, family = binomial, data = train_more
+)
+summary(aic_best)
+faraway::vif(aic_best)
+```
+```{r}
+summary(reduced2)
+faraway::vif(reduced2)
+```
+I don't really know what to make of the VIF being so bad
+
+```{r}
+calc_likelihood_ratio <- function(ful, red) {
+  ts <- red$deviance - ful$deviance
+  df <- length(attr(ful$terms, "term.labels")) - length(attr(red$terms, "term.labels"))
+  ##pvalue
+  p <- 1 - pchisq(ts, df)
+  ##critical value
+  crt <- qchisq(1 - 0.05, df)
+  return(c(ts, df, p, crt))
+}
+```
+```{r}
+calc_likelihood_ratio(full, reduced2)
+```
+
+$$
+H_{0}: \beta_{1} = 0 \\
+H_{a}: \beta_{1} \neq 0
+$$
+
+G2 test stat is 43.09 with 2 DF, p-val is 2.354-09, and critical val is 7.815
+
+p val small and TS > crt so we reject the null hypothesis
+
+```{r}
+calc_likelihood_ratio(full_more, reduced2_more)
+```
+
+Not that much different
+
+```{r}
+calc_likelihood_ratio(reduced2_more, reduced2)
+```
+
+## Prediction
+
+```{r}
+logodds <- predict(reduced2, newdata = test)
+head(logodds)
+
+preds <- predict(reduced2, newdata = test, type = "response")
+head(preds)
+```
+
+## Confusion
+```{r}
+# 1 -> TN
+# 2 -> FN
+# 3 -> FP
+# 4 -> TP
+calc_confunsion_metrics <- function(data, predictions, threshold) {
+  ct <- table(data$expensive, predictions > threshold)
+  n <- length(data)
+  err_rate <- (ct[2] + ct[3]) / n
+  acc <- (ct[1] + ct[4]) / n
+  fpr <- ct[3] / (ct[1] + ct[3])
+  fnr <- ct[2] / (ct[4] + ct[2])
+  sensitivity <- ct[4] / (ct[4] + ct[2])
+  specificity <- ct[1] / (ct[1] + ct[3])
+  precision <- ct[4] / (ct[4] + ct[3])
+  return(data.frame(err_rate, acc, fpr, fnr, sensitivity, specificity, precision))
+}
+```
+```{r}
+# test.new<-data.frame(test, preds, preds > 0.5)
+cm <- calc_confunsion_metrics(test, preds, 0.5)
+```
+
+## ROC
+
+```{r}
+rates <- ROCR::prediction(preds, test$expensive)
+roc_result <- ROCR::performance(rates, measure = "tpr", x.measure = "fpr")
+plot(roc_result, main = "ROC Curve for Reduced Model")
+lines(x = c(0, 1), y = c(0, 1), col = "red")
+points(x = cm$fpr, y = cm$sensitivity, col = "blue", pch = 16)
+```
+
+Seems to indicate that we could bump the threshold up to 0.6 if needed
+
+## AUC
+
+```{r}
+auc <- performance(rates, measure = "auc")
+auc@y.values
+```
+
+With a value of `0.9031341`, does better than random guessing
 
 ## RANDOM
 
 ```{r}
-typeof(data$date)
+Data<-read.table("./project2/students.txt", header=T, sep="")
+##first column is index, remove it
+Data<-Data[,-1]
+##some NAs in data. Remove them
+Data<-Data[complete.cases(Data),]
+##convert categorical to factors. needed for contrasts
+Data$Gender<-factor(Data$Gender)
+Data$Smoke<-factor(Data$Smoke)
+Data$Marijuan<-factor(Data$Marijuan)
+Data$DrivDrnk<-factor(Data$DrivDrnk)
+##set seed so results (split) are reproducible
+set.seed(6021)
+##evenly split data into train and test sets
+sample.data<-sample.int(nrow(Data), floor(.50*nrow(Data)), replace = F)
+sample.train<-Data[sample.data, ]
+sample.test<-Data[-sample.data, ]
+result <- glm(DrivDrnk ~ ., family = binomial, data = sample.train)
+reduced<-glm(DrivDrnk~Smoke+Marijuan+DaysBeer, family=binomial, data=sample.train)
+# faraway::vif(result)
+calc_likelihood_ratio(result, reduced)
 ```
