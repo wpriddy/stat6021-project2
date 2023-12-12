@@ -199,9 +199,15 @@ glm(formula = expensive ~ view + renovated + sqft_living + floors +
     yr_since_renovation, family = binomial, data = train_more)
 ```
 
-has the best AIC for a model selection but needs more analysis because that isn't what I expected. I thought `reduced2` would be best.
+has the best AIC for a model selection but needs more analysis because that isn't what I expected. 
 
+I thought `reduced2` would be best.
 
+```text
+glm(formula = expensive ~ view + yr_built + sqft_living + 
+    floors + expensive + age_at_sale,
+    family = binomial, data = train)
+```
 ## Con't w/ Best From AIC Selection
 
 ```{r}
