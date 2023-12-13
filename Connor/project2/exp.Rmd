@@ -15,6 +15,9 @@ library(ggmap)
 library(gridExtra)
 library(ROCR)
 library(faraway)
+library(tidygeocoder)
+library(leaflet)
+library(geosphere)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -51,7 +54,36 @@ data["yr_since_renovation"] <- ifelse(
   as.integer(data$year) - as.integer(data$yr_renovated)
 )
 
+# That addr is the space needle lol
+seattle_addr <- tibble::tribble(
+  ~name,                  ~addr,
+  "Seattle",          "400 Broad St, Seattle, WA 98109"
+)
+lat_longs <- seattle_addr %>%
+  geocode(addr, method = "osm", lat = latitude, long = longitude)
+
+distance <- function(x, output) {
+  current <- c(as.numeric(x["long"]), as.numeric(x["lat"]))
+  seattle <- c(lat_longs$longitude, lat_longs$latitude)
+  return(
+    geosphere::distm(
+      current,
+      seattle,
+      fun = geosphere::distHaversine
+    )
+  )
+}
+data$distSeattle <- apply(data, 1, distance)
+
+data$zip_group <- substr(data$zipcode, 1, 4)
+
 ##  Omitting highly correlated predictors
+
+# I think grade and zip_group should be removed too TBH
+data_many <- subset(
+  data,
+  select = -c(id, date, price, zipcode, zip_group, lat, long, sqft_living15, sqft_lot15, sqft_above, grade)
+)
 
 data_more <- data[, c(
   "waterfront", "view", "yr_built", "renovated", "sqft_living",
@@ -72,23 +104,53 @@ test <- data_less[-sample, ]
 sample_more <- sample.int(nrow(data_more), floor(.80 * nrow(data_more)), replace = FALSE)
 train_more <- data_more[sample_more, ]
 test_more <- data_more[-sample_more, ]
-# sample <- sample.int(nrow(data), floor(.80 * nrow(data)), replace = FALSE)
-# train <- data[sample, ]
-# test <- data[-sample, ]
+sample_all <- sample.int(nrow(data), floor(.80 * nrow(data)), replace = FALSE)
+train_all <- data[sample_all, ]
+test_all <- data[-sample_all, ]
+sample_many <- sample.int(nrow(data_many), floor(.80 * nrow(data_many)), replace = FALSE)
+train_many <- data_many[sample_many, ]
+test_many <- data_many[-sample_many, ]
+```
+## GEOCODE
+
+```{r}
+m <- leaflet(data) %>%
+  addTiles() %>%
+  addCircleMarkers(lng = data$long, lat = data$lat,  clusterOptions = markerClusterOptions())
+m
+
+# That addr is the space needle lol
+seattle_addr <- tibble::tribble(
+  ~name,                  ~addr,
+  "Seattle",          "400 Broad St, Seattle, WA 98109"
+)
+lat_longs <- seattle_addr %>%
+  geocode(addr, method = "osm", lat = latitude, long = longitude)
+
+distance <- function(x, output) {
+  current <- c(as.numeric(x["long"]), as.numeric(x["lat"]))
+  seattle <- c(lat_longs$longitude, lat_longs$latitude)
+  return(
+    geosphere::distm(
+      current,
+      seattle,
+      fun = geosphere::distHaversine
+    )
+  )
+}
+data$distSeattle <- apply(data, 1, distance)
 ```
 
 ## Graphs
 
 ```{r}
-# GGally::ggpairs(data_cat_sub, lower = list(discrete=wrap("facethist", binwith=10)))
-# chart1 <- ggplot2::ggplot(train, aes(x = species, fill = expensive)) +
-#   geom_bar(position = "fill") +
-#   labs(x = "Sex", y = "Proportion",
-#        title = "Proportion of species by sex")
-# chart1
+
+chart1 <- ggplot2::ggplot(data, aes(x = price)) +
+  geom_density()
+chart1
+
 chart2 <- ggplot2::ggplot(data, aes(x = bedrooms, color = expensive)) +
   geom_density()
-# facet_wrap(train$species)
 
 chart3 <- ggplot2::ggplot(data, aes(x = bathrooms, color = expensive)) +
   geom_density()
@@ -103,12 +165,11 @@ gridExtra::grid.arrange(chart2, chart3, chart4, chart5, ncol = 2, nrow = 2)
 
 chart6 <- ggplot2::ggplot(train, aes(x = waterfront, color = expensive)) +
   geom_density()
-# facet_wrap(train$species)
 
 chart7 <- ggplot2::ggplot(train_more, aes(x = view, color = expensive)) +
   geom_density()
 
-chart8 <- ggplot2::ggplot(train_more, aes(x = sqft_living, color = expensive)) +
+chart8 <- ggplot2::ggplot(train_more, aes(x = log(sqft_living), color = expensive)) +
   geom_density()
 
 chart9 <- ggplot2::ggplot(train_more, aes(x = log(sqft_lot), color = expensive)) +
@@ -118,7 +179,6 @@ gridExtra::grid.arrange(chart6, chart7, chart8, chart9, ncol = 2, nrow = 2)
 
 chart10 <- ggplot2::ggplot(train_more, aes(x = yr_built, color = expensive)) +
   geom_density()
-# facet_wrap(train$species)
 
 chart11 <- ggplot2::ggplot(data, aes(x = yr_renovated, color = expensive)) +
   geom_density()
@@ -133,7 +193,6 @@ gridExtra::grid.arrange(chart10, chart11, chart12, chart13, ncol = 2, nrow = 2)
 
 chart14 <- ggplot2::ggplot(train_more, aes(x = year, color = expensive)) +
   geom_density()
-# facet_wrap(train$species)
 
 chart15 <- ggplot2::ggplot(train_more, aes(x = month, color = expensive)) +
   geom_density()
@@ -145,6 +204,15 @@ chart17 <- ggplot2::ggplot(train_more, aes(x = yr_since_renovation, color = expe
   geom_density()
 
 gridExtra::grid.arrange(chart14, chart15, chart16, chart17, ncol = 2, nrow = 2)
+
+chart18 <- ggplot2::ggplot(train_all, aes(x = log(distSeattle), color = expensive)) +
+  geom_density()
+
+chart19 <- ggplot2::ggplot(train_all, aes(x = zip_group), color = expensive) +
+  geom_density()
+
+gridExtra::grid.arrange(chart18, chart19, ncol = 2, nrow = 1)
+
 ```
 
 1. Displays of `bedrooms`, `bathrooms`, `floors`, `grade`
@@ -157,7 +225,6 @@ gridExtra::grid.arrange(chart14, chart15, chart16, chart17, ncol = 2, nrow = 2)
 
 ## Correlations 
 ```{r}
-correlations <- round(cor(subset(train, select = -c(grade, expensive))), 3)
 round(cor(data$yr_built, data$yr_renovated, method = c("pearson", "kendall", "spearman")), 3)
 round(cor(data$bedrooms, data$bathrooms, method = c("pearson", "kendall", "spearman")), 3)
 round(cor(as.numeric(data$grade), data$bathrooms, method = c("pearson", "kendall", "spearman")), 3)
@@ -172,23 +239,34 @@ round(cor(data$age_at_sale, as.numeric(data$condition), method = c("pearson", "k
 
 ```{r}
 full <- glm(expensive ~ ., family = binomial, data = train)
-full_more <- glm(expensive ~ ., family = binomial, data = train_more)
 regnull <- glm(expensive ~ 1, family = binomial, data = train)
-regnull_more <- glm(expensive ~ 1, family = binomial, data = train_more)
-summary(full)
 reduced1 <- glm(expensive ~ . - condition - waterfront, family = binomial, data = train)
-summary(reduced1)
 reduced2 <- glm(expensive ~ . - condition - waterfront - renovated, family = binomial, data = train)
-summary(reduced2)
+full_more <- glm(expensive ~ ., family = binomial, data = train_more)
+regnull_more <- glm(expensive ~ 1, family = binomial, data = train_more)
 reduced2_more <- glm(expensive ~ . - condition - waterfront - renovated, family = binomial, data = train_more)
+full_more_reduced <- glm(expensive ~ . - yr_built - waterfront - year, family = binomial, data = train_more)
+full_many <- glm(expensive ~ ., family = binomial, data = train_many)
+regnull_many <- glm(expensive ~ 1, family = binomial, data = train_many)
+full_many_reduced <- glm(formula = expensive ~ sqft_living + distSeattle + zip_group +
+    view + sqft_basement + sqft_lot + condition + bedrooms +
+    year + yr_renovated + renovated + floors + waterfront + month +
+    age_at_sale + bathrooms, family = binomial, data = train_many)
+
+
+summary(full)
+summary(reduced1)
+summary(reduced2)
 summary(reduced2)
 
+summary(full_more_reduced)
 step(full)
 step(reduced1)
 step(reduced2)
 
 step(reduced2, scope = list(lower = reduced2, upper = full), direction = "forward")
 step(reduced2_more, scope = list(lower = reduced2_more, upper = full_more), direction = "forward")
+step(regnull_many, scope = list(lower = regnull_many, upper = full_many), direction = "forward")
 
 step(full_more)
 ```
@@ -208,6 +286,15 @@ glm(formula = expensive ~ view + yr_built + sqft_living +
     floors + expensive + age_at_sale,
     family = binomial, data = train)
 ```
+
+Going back and doing it will a the "many" set (which includes a new data point, distSeattle)
+
+```text
+glm(formula = expensive ~ sqft_living + distSeattle + zip_group + 
+    view + sqft_basement + sqft_lot + condition + bedrooms +
+    year + yr_renovated + renovated + floors + waterfront + month +
+    age_at_sale + bathrooms, family = binomial, data = train_many)
+```
 ## Con't w/ Best From AIC Selection
 
 ```{r}
@@ -223,7 +310,14 @@ summary(reduced2)
 faraway::vif(reduced2)
 ```
 I don't really know what to make of the VIF being so bad
-
+```{r}
+summary(full_more_reduced)
+faraway::vif(full_more_reduced)
+```
+```{r}
+summary(full_many_reduced)
+faraway::vif(full_many_reduced)
+```
 ```{r}
 calc_likelihood_ratio <- function(ful, red) {
   ts <- red$deviance - ful$deviance
@@ -258,6 +352,33 @@ Not that much different
 calc_likelihood_ratio(reduced2_more, reduced2)
 ```
 
+Reject null but looks worse
+
+```{r}
+calc_likelihood_ratio(full_more, full_more_reduced)
+```
+
+Accept null
+
+```{r}
+calc_likelihood_ratio(full_many, full_many_reduced)
+par(mfrow = c(2, 2))
+plot(full_many_reduced)
+acf(full_many_reduced$residuals, main = "ACF Plot of Residuals")
+```
+
+## LEVER
+
+```{r}
+hii <- lm.influence(full_many_reduced)$hat ##leverages
+ext.student<-rstudent(full_many_reduced) ##ext studentized res
+n <- nrow(data_many)
+p <- 6
+hii[hii > 2 * p / n]
+sort(hii)
+ext.student[abs(ext.student) > 3]
+```
+
 ## Prediction
 
 ```{r}
@@ -268,7 +389,18 @@ preds <- predict(reduced2, newdata = test, type = "response")
 head(preds)
 ```
 
+```{r}
+logodds_more <- predict(full_more, newdata = test)
+head(logodds)
+
+preds_more <- predict(full_more, newdata = test, type = "response")
+head(preds)
+```
+
 ## Confusion
+```{r}
+table(test$expensive, preds > 0.5)
+```
 ```{r}
 # 1 -> TN
 # 2 -> FN
